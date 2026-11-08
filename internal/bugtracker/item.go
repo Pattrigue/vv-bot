@@ -17,12 +17,13 @@ const (
 var (
 	messageLinkRe       = regexp.MustCompile(messageLinkPrefix + `(?:@me|\d+)(?:/\d+)+`)
 	messageLinkSuffixRe = regexp.MustCompile(`\s*\[[^\]]*` + messageLinkPrefix + `[^\]]*\]`)
+	linkRe              = regexp.MustCompile(`<?https?://[^\s<>\])]+>?`)
 )
 
 // Item is a single entry on the bug list.
 type Item struct {
 	ID       string
-	Number   int // 1-based position in the checklist, as shown by /buglist
+	Number   int // 1-based position in the checklist
 	Name     string
 	Complete bool
 }
@@ -32,9 +33,17 @@ func (i Item) Summary() string {
 	return messageLinkSuffixRe.ReplaceAllString(i.Name, "")
 }
 
-// MaskedName is the item's name with its message link as a short Markdown link.
+// MaskedName is the item's name with links wrapped in <> so Discord does not
+// embed them, and its message link as a short Markdown link.
 func (i Item) MaskedName() string {
-	return messageLinkRe.ReplaceAllString(i.Name, "[link]($0)")
+	return linkRe.ReplaceAllStringFunc(i.Name, func(match string) string {
+		link := strings.Trim(match, "<>")
+		if messageLinkRe.FindString(link) == link {
+			return "[link](<" + link + ">)"
+		}
+
+		return "<" + link + ">"
+	})
 }
 
 // ItemName builds the name of a new item. It links back to the Discord message

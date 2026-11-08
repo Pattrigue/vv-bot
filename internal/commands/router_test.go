@@ -186,7 +186,7 @@ func TestBugList(t *testing.T) {
 	b.command(t, "buglist", `[{"name":"incomplete","type":5,"value":true}]`)
 
 	got := *b.discord.lastEdit(t).Content
-	if !strings.Contains(got, "**1) login broken") || strings.Contains(got, "old crash") {
+	if !strings.Contains(got, "- **login broken") || strings.Contains(got, "old crash") {
 		t.Errorf("got %q", got)
 	}
 }

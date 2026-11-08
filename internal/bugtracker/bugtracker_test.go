@@ -327,12 +327,12 @@ func TestItemSummaryAndMaskedName(t *testing.T) {
 		{
 			"a (Added by P) [https://discord.com/channels/1/2/3]",
 			"a (Added by P)",
-			"a (Added by P) [[link](https://discord.com/channels/1/2/3)]",
+			"a (Added by P) [[link](<https://discord.com/channels/1/2/3>)]",
 		},
 		{
 			"a [screenshots: https://discord.com/channels/@me/2/3]",
 			"a",
-			"a [screenshots: [link](https://discord.com/channels/@me/2/3)]",
+			"a [screenshots: [link](<https://discord.com/channels/@me/2/3>)]",
 		},
 	}
 

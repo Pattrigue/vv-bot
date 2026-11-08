@@ -53,12 +53,12 @@ func formatBugList(items []bugtracker.Item, incompleteOnly bool) []string {
 			continue
 		}
 
-		format := "**%d) %s**\n\n"
+		format := "- **%s**\n"
 		if item.Complete {
-			format = "~~%d) %s~~\n\n"
+			format = "- ~~%s~~\n"
 		}
 
-		line := truncate(fmt.Sprintf(format, item.Number, item.MaskedName()), maxMessageLength)
+		line := truncate(fmt.Sprintf(format, item.MaskedName()), maxMessageLength)
 
 		if last := len(pages) - 1; last >= 0 && len(pages[last])+len(line) <= maxMessageLength {
 			pages[last] += line

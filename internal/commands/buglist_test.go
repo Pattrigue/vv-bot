@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -18,16 +17,16 @@ func TestFormatBugList(t *testing.T) {
 	t.Run("all items", func(t *testing.T) {
 		got := formatBugList(items, false)
 
-		want := "**1) first**\n\n~~2) second~~\n\n**3) third**\n\n"
+		want := "- **first**\n- ~~second~~\n- **third**\n"
 		if len(got) != 1 || got[0] != want {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 
-	t.Run("incomplete only keeps original numbers", func(t *testing.T) {
+	t.Run("incomplete only", func(t *testing.T) {
 		got := formatBugList(items, true)
 
-		want := "**1) first**\n\n**3) third**\n\n"
+		want := "- **first**\n- **third**\n"
 		if len(got) != 1 || got[0] != want {
 			t.Errorf("got %q, want %q", got, want)
 		}
@@ -37,8 +36,23 @@ func TestFormatBugList(t *testing.T) {
 		link := "https://discord.com/channels/1/2/3"
 		got := formatBugList([]bugtracker.Item{{Number: 1, Name: "bug [" + link + "]"}}, false)
 
-		if want := "[link](" + link + ")"; !strings.Contains(got[0], want) {
+		if want := "[link](<" + link + ">)"; !strings.Contains(got[0], want) {
 			t.Errorf("got %q, want it to contain %q", got[0], want)
+		}
+	})
+
+	t.Run("other links do not embed", func(t *testing.T) {
+		tests := map[string]string{
+			"see https://example.com/a now":   "see <https://example.com/a> now",
+			"see <https://example.com/a> now": "see <https://example.com/a> now",
+			"see [a](https://example.com/a)":  "see [a](<https://example.com/a>)",
+		}
+
+		for name, want := range tests {
+			got := formatBugList([]bugtracker.Item{{Number: 1, Name: name}}, false)
+			if !strings.Contains(got[0], want) {
+				t.Errorf("got %q, want it to contain %q", got[0], want)
+			}
 		}
 	})
 }
@@ -65,7 +79,7 @@ func TestFormatBugListOversizedItem(t *testing.T) {
 	items := []bugtracker.Item{{Number: 1, Name: strings.Repeat("x", maxMessageLength+100)}}
 
 	got := formatBugList(items, false)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "**1) xxx") {
+	if len(got) != 1 || !strings.HasPrefix(got[0], "- **xxx") {
 		t.Fatalf("got %d pages, first starting %.20q", len(got), got[0])
 	}
 
@@ -91,16 +105,10 @@ func TestFormatBugListSplitsPages(t *testing.T) {
 			t.Errorf("page %d is %d chars, limit %d", i, len(page), maxMessageLength)
 		}
 
-		total += strings.Count(page, "\n\n")
+		total += strings.Count(page, "\n")
 	}
 
 	if total != len(items) {
 		t.Errorf("pages hold %d items, want %d", total, len(items))
-	}
-
-	// Numbering continues across pages
-	last := pages[len(pages)-1]
-	if want := fmt.Sprintf("**%d) ", len(items)); !strings.Contains(last, want) {
-		t.Errorf("last page should contain %q", want)
 	}
 }
