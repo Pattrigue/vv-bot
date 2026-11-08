@@ -78,11 +78,7 @@ func (h *handlers) addBug(data discord.SlashCommandInteractionData, e *handler.C
 	if err := h.bugs.Add(bugtracker.ItemName(report, author, msg.JumpURL(), len(embeds) > 0)); err != nil {
 		slog.Error("failed to add bug", "err", err, "report", report)
 		followUp(e, bugtracker.UserMessage(err))
-
-		return nil
 	}
-
-	followUp(e, "Your bug report has successfully been added to the bug list!")
 
 	return nil
 }

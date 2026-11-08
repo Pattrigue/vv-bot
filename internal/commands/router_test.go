@@ -262,7 +262,7 @@ func TestAddBug(t *testing.T) {
 		t.Errorf("post = %q", got)
 	}
 
-	if len(b.discord.followups) != 1 || !strings.Contains(b.discord.followups[0].Content, "successfully") {
+	if len(b.discord.followups) != 0 {
 		t.Errorf("followups = %+v", b.discord.followups)
 	}
 }
