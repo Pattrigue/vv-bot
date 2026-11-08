@@ -41,6 +41,14 @@ func TestFormatBugList(t *testing.T) {
 		}
 	})
 
+	t.Run("multi-line items stay on one line", func(t *testing.T) {
+		got := formatBugList([]bugtracker.Item{{Number: 1, Name: "first\nsecond", Complete: true}}, false)
+
+		if want := "- ~~first second~~\n"; got[0] != want {
+			t.Errorf("got %q, want %q", got[0], want)
+		}
+	})
+
 	t.Run("other links do not embed", func(t *testing.T) {
 		tests := map[string]string{
 			"see https://example.com/a now":   "see <https://example.com/a> now",
@@ -81,6 +89,10 @@ func TestFormatBugListOversizedItem(t *testing.T) {
 	got := formatBugList(items, false)
 	if len(got) != 1 || !strings.HasPrefix(got[0], "- **xxx") {
 		t.Fatalf("got %d pages, first starting %.20q", len(got), got[0])
+	}
+
+	if !strings.HasSuffix(got[0], "**\n") {
+		t.Errorf("closing markers were cut off: ends %q", got[0][len(got[0])-10:])
 	}
 
 	if n := len([]rune(got[0])); n > maxMessageLength {
