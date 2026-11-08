@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,11 @@ type fakeDiscord struct {
 	edits     []discord.MessageUpdate
 	followups []discord.MessageCreate
 	messages  map[snowflake.ID][]discord.MessageCreate
+
+	failUploads bool
 }
+
+const testUploadLimit = 1024
 
 func (f *fakeDiscord) respond(t discord.InteractionResponseType, data discord.InteractionResponseData, _ ...rest.RequestOpt) error {
 	f.responses = append(f.responses, t)
@@ -38,6 +43,10 @@ func (f *fakeDiscord) respond(t discord.InteractionResponseType, data discord.In
 }
 
 func (f *fakeDiscord) UpdateInteractionResponse(_ snowflake.ID, _ string, update discord.MessageUpdate, _ ...rest.RequestOpt) (*discord.Message, error) {
+	if f.failUploads && len(update.Files) > 0 {
+		return nil, errors.New("upload failed")
+	}
+
 	f.edits = append(f.edits, update)
 
 	return &discord.Message{ID: 9, ChannelID: 8}, nil
@@ -128,7 +137,8 @@ func (b *testBot) dispatch(t *testing.T, interactionType discord.InteractionType
 	raw := fmt.Sprintf(`{"id":"1","application_id":"2","token":"tok","version":1,"type":%d,
 		"user":{"id":"3","username":"pat"},
 		"message":{"id":"4","channel_id":"5"},
-		"data":%s}`, interactionType, dataJSON)
+		"attachment_size_limit":%d,
+		"data":%s}`, interactionType, testUploadLimit, dataJSON)
 
 	interaction, err := discord.UnmarshalInteraction([]byte(raw))
 	if err != nil {
@@ -264,6 +274,92 @@ func TestAddBug(t *testing.T) {
 
 	if len(b.discord.followups) != 0 {
 		t.Errorf("followups = %+v", b.discord.followups)
+	}
+}
+
+// addBugWithAttachment runs /addbug with one attachment served from a fake CDN.
+func (b *testBot) addBugWithAttachment(t *testing.T, contentType string, size int, report string) string {
+	t.Helper()
+
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, strings.Repeat("x", size))
+	}))
+	t.Cleanup(cdn.Close)
+
+	url := cdn.URL + "/clip"
+
+	b.dispatch(t, discord.InteractionTypeApplicationCommand, fmt.Sprintf(`{"id":"6","type":1,"name":"addbug",
+		"options":[{"name":"report","type":3,"value":%q},{"name":"attachment1","type":11,"value":"77"}],
+		"resolved":{"attachments":{"77":{"id":"77","filename":"clip.bin","content_type":%q,"size":%d,"url":%q}}}}`,
+		report, contentType, size, url))
+
+	return url
+}
+
+func TestAddBugEmbedsImages(t *testing.T) {
+	b := newTestBot(t)
+	b.addBugWithAttachment(t, "image/png", 10, "it broke")
+
+	edit := b.discord.lastEdit(t)
+	if edit.Embeds == nil || len(*edit.Embeds) != 1 || len(edit.Files) != 0 {
+		t.Errorf("embeds = %+v, files = %d", edit.Embeds, len(edit.Files))
+	}
+}
+
+func TestAddBugUploadsVideos(t *testing.T) {
+	b := newTestBot(t)
+	url := b.addBugWithAttachment(t, "video/mp4", 10, "it broke")
+
+	edit := b.discord.lastEdit(t)
+	if len(edit.Files) != 1 || edit.Files[0].Name != "clip.bin" {
+		t.Fatalf("files = %+v", edit.Files)
+	}
+
+	if strings.Contains(*edit.Content, url) {
+		t.Errorf("uploaded video should not be linked: %q", *edit.Content)
+	}
+
+	if len(b.trello.writes) != 1 {
+		t.Errorf("writes = %v", b.trello.writes)
+	}
+}
+
+func TestAddBugLinksVideosOverTheLimit(t *testing.T) {
+	b := newTestBot(t)
+	url := b.addBugWithAttachment(t, "video/mp4", testUploadLimit+1, "it broke")
+
+	edit := b.discord.lastEdit(t)
+	if len(edit.Files) != 0 || !strings.HasSuffix(*edit.Content, "\n"+url) {
+		t.Errorf("files = %d, content = %q", len(edit.Files), *edit.Content)
+	}
+}
+
+func TestAddBugLinksVideosWhenUploadFails(t *testing.T) {
+	b := newTestBot(t)
+	b.discord.failUploads = true
+	url := b.addBugWithAttachment(t, "video/mp4", 10, "it broke")
+
+	edit := b.discord.lastEdit(t)
+	if len(edit.Files) != 0 || !strings.HasSuffix(*edit.Content, "\n"+url) {
+		t.Errorf("files = %d, content = %q", len(edit.Files), *edit.Content)
+	}
+
+	if len(b.trello.writes) != 1 {
+		t.Errorf("the report should still be added, writes = %v", b.trello.writes)
+	}
+}
+
+func TestAppendLinksKeepsLinksWhole(t *testing.T) {
+	content := strings.Repeat("a", maxMessageLength-10)
+
+	got, overflow := appendLinks(content, []string{"short", "much too long to fit"})
+
+	if want := content + "\nshort"; got != want {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+
+	if !slices.Equal(overflow, []string{"much too long to fit"}) {
+		t.Errorf("overflow = %v", overflow)
 	}
 }
 

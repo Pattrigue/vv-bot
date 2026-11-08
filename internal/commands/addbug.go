@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/handler"
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	maxScreenshots = 3
+	maxAttachments = 3
 
 	// maxReportLength leaves room within maxMessageLength for the text the bot
 	// adds around a report.
@@ -27,10 +28,10 @@ var addBugCommand = discord.SlashCommandCreate{
 func addBugOptions() []discord.ApplicationCommandOption {
 	opts := []discord.ApplicationCommandOption{reportOption("Describe the bug")}
 
-	for i := 1; i <= maxScreenshots; i++ {
+	for i := 1; i <= maxAttachments; i++ {
 		opts = append(opts, discord.ApplicationCommandOptionAttachment{
-			Name:        screenshotOptionName(i),
-			Description: "Screenshot of the bug",
+			Name:        attachmentOptionName(i),
+			Description: "Screenshot or video of the bug",
 		})
 	}
 
@@ -46,19 +47,19 @@ func reportOption(description string) discord.ApplicationCommandOptionString {
 	}
 }
 
-func screenshotOptionName(i int) string {
-	return fmt.Sprintf("screenshot%d", i)
+func attachmentOptionName(i int) string {
+	return fmt.Sprintf("attachment%d", i)
 }
 
 func (h *handlers) addBug(data discord.SlashCommandInteractionData, e *handler.CommandEvent) error {
 	report := cleanReport(data.String("report"))
 	author := authorName(e.User(), e.Member())
 
-	var embeds []discord.Embed
+	var attachments []discord.Attachment
 
-	for i := 1; i <= maxScreenshots; i++ {
-		if att, ok := data.OptAttachment(screenshotOptionName(i)); ok {
-			embeds = append(embeds, discord.NewEmbed().WithImage(att.URL))
+	for i := 1; i <= maxAttachments; i++ {
+		if att, ok := data.OptAttachment(attachmentOptionName(i)); ok {
+			attachments = append(attachments, att)
 		}
 	}
 
@@ -66,16 +67,30 @@ func (h *handlers) addBug(data discord.SlashCommandInteractionData, e *handler.C
 		return fmt.Errorf("deferring response: %w", err)
 	}
 
-	// Post the report (with screenshots) first so we have a message to link to.
-	msg, err := e.UpdateInteractionResponse(discord.NewMessageUpdate().
-		WithContentf("**Bug report from %s:**\n%s", author, report).
-		WithEmbeds(embeds...))
+	media := collectMedia(attachments, e.AttachmentSizeLimit())
+	content := fmt.Sprintf("**Bug report from %s:**\n%s", author, report)
+	update, overflow := media.update(content)
+
+	// Post the report (with attachments) first so we have a message to link to.
+	msg, err := e.UpdateInteractionResponse(update)
+	if err != nil && len(media.uploads) > 0 {
+		// An upload can time out or be refused. Links still get the report posted.
+		slog.Error("failed to upload videos, linking them instead", "err", err)
+
+		update, overflow = media.withoutUploads().update(content)
+		msg, err = e.UpdateInteractionResponse(update)
+	}
+
 	if err != nil {
 		return fmt.Errorf("posting bug report: %w", err)
 	}
 
+	if len(overflow) > 0 {
+		followUp(e, strings.Join(overflow, "\n"))
+	}
+
 	// The post stays up either way, so a failure is reported in a followup.
-	if err := h.bugs.Add(bugtracker.ItemName(report, author, msg.JumpURL(), len(embeds) > 0)); err != nil {
+	if err := h.bugs.Add(bugtracker.ItemName(report, author, msg.JumpURL(), len(attachments) > 0)); err != nil {
 		slog.Error("failed to add bug", "err", err, "report", report)
 		followUp(e, bugtracker.UserMessage(err))
 	}

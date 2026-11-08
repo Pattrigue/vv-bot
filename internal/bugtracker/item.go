@@ -47,12 +47,12 @@ func (i Item) MaskedName() string {
 }
 
 // ItemName builds the name of a new item. It links back to the Discord message
-// so that any screenshots are reachable from Trello.
-func ItemName(report, author, messageLink string, hasScreenshots bool) string {
+// so that any attachments are reachable from Trello.
+func ItemName(report, author, messageLink string, hasAttachments bool) string {
 	name := report + addedBySeparator + author + ")"
 
-	if hasScreenshots {
-		return fmt.Sprintf("%s [screenshots: %s]", name, messageLink)
+	if hasAttachments {
+		return fmt.Sprintf("%s [attachments: %s]", name, messageLink)
 	}
 
 	return fmt.Sprintf("%s [%s]", name, messageLink)

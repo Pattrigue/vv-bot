@@ -313,11 +313,11 @@ func TestItemName(t *testing.T) {
 	const link = "https://discord.com/channels/1/2/3"
 
 	if got, want := ItemName("crash", "Pat", link, false), "crash (Added by Pat) ["+link+"]"; got != want {
-		t.Errorf("without screenshots: got %q, want %q", got, want)
+		t.Errorf("without attachments: got %q, want %q", got, want)
 	}
 
-	if got, want := ItemName("crash", "Pat", link, true), "crash (Added by Pat) [screenshots: "+link+"]"; got != want {
-		t.Errorf("with screenshots: got %q, want %q", got, want)
+	if got, want := ItemName("crash", "Pat", link, true), "crash (Added by Pat) [attachments: "+link+"]"; got != want {
+		t.Errorf("with attachments: got %q, want %q", got, want)
 	}
 }
 
