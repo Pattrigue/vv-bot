@@ -27,6 +27,7 @@ type fakeDiscord struct {
 	data      []discord.InteractionResponseData
 	edits     []discord.MessageUpdate
 	followups []discord.MessageCreate
+	messages  map[snowflake.ID][]discord.MessageCreate
 }
 
 func (f *fakeDiscord) respond(t discord.InteractionResponseType, data discord.InteractionResponseData, _ ...rest.RequestOpt) error {
@@ -48,6 +49,16 @@ func (f *fakeDiscord) CreateFollowupMessage(_ snowflake.ID, _ string, msg discor
 	return &discord.Message{}, nil
 }
 
+func (f *fakeDiscord) CreateMessage(channelID snowflake.ID, msg discord.MessageCreate, _ ...rest.RequestOpt) (*discord.Message, error) {
+	if f.messages == nil {
+		f.messages = make(map[snowflake.ID][]discord.MessageCreate)
+	}
+
+	f.messages[channelID] = append(f.messages[channelID], msg)
+
+	return &discord.Message{}, nil
+}
+
 func (f *fakeDiscord) lastEdit(t *testing.T) discord.MessageUpdate {
 	t.Helper()
 
@@ -64,6 +75,7 @@ type fakeTrello struct {
 	mu         sync.Mutex
 	writes     []string
 	failWrites bool
+	extraItems string
 }
 
 func (f *fakeTrello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,10 +83,10 @@ func (f *fakeTrello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/lists/LIST":
 		fmt.Fprint(w, `{"id":"LIST"}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/lists/LIST/cards":
-		fmt.Fprint(w, `[{"id":"CARD","name":"Bugs/Issues","checklists":[{"id":"CL","checkItems":[
+		fmt.Fprintf(w, `[{"id":"CARD","name":"Bugs/Issues","checklists":[{"id":"CL","checkItems":[
 			{"id":"i1","name":"login broken (Added by Pat) [https://discord.com/channels/1/2/3]","state":"incomplete"},
-			{"id":"i2","name":"old crash","state":"complete"}
-		]}]}]`)
+			{"id":"i2","name":"old crash","state":"complete"}%s
+		]}]}]`, f.extraItems)
 	default:
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -186,8 +198,22 @@ func TestBugList(t *testing.T) {
 	b.command(t, "buglist", `[{"name":"incomplete","type":5,"value":true}]`)
 
 	got := *b.discord.lastEdit(t).Content
-	if !strings.Contains(got, "- **login broken") || strings.Contains(got, "old crash") {
+	if !strings.Contains(got, "- login broken") || strings.Contains(got, "old crash") {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestBugListSendsExtraPagesToTheChannel(t *testing.T) {
+	b := newTestBot(t)
+	b.trello.extraItems = strings.Repeat(`,{"id":"x","name":"`+strings.Repeat("y", 100)+`","state":"incomplete"}`, 50)
+	b.command(t, "buglist", `[]`)
+
+	if len(b.discord.followups) != 0 {
+		t.Errorf("got %d followups, want none", len(b.discord.followups))
+	}
+
+	if len(b.discord.messages[8]) == 0 {
+		t.Errorf("no extra pages were sent to the channel, got %v", b.discord.messages)
 	}
 }
 

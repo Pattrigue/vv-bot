@@ -17,7 +17,7 @@ func TestFormatBugList(t *testing.T) {
 	t.Run("all items", func(t *testing.T) {
 		got := formatBugList(items, false)
 
-		want := "- **first**\n- ~~second~~\n- **third**\n"
+		want := "- first\n- ~~second~~\n- third\n"
 		if len(got) != 1 || got[0] != want {
 			t.Errorf("got %q, want %q", got, want)
 		}
@@ -26,7 +26,7 @@ func TestFormatBugList(t *testing.T) {
 	t.Run("incomplete only", func(t *testing.T) {
 		got := formatBugList(items, true)
 
-		want := "- **first**\n- **third**\n"
+		want := "- first\n- third\n"
 		if len(got) != 1 || got[0] != want {
 			t.Errorf("got %q, want %q", got, want)
 		}
@@ -84,14 +84,14 @@ func TestFormatBugListEmpty(t *testing.T) {
 }
 
 func TestFormatBugListOversizedItem(t *testing.T) {
-	items := []bugtracker.Item{{Number: 1, Name: strings.Repeat("x", maxMessageLength+100)}}
+	items := []bugtracker.Item{{Number: 1, Name: strings.Repeat("x", maxMessageLength+100), Complete: true}}
 
 	got := formatBugList(items, false)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "- **xxx") {
+	if len(got) != 1 || !strings.HasPrefix(got[0], "- ~~xxx") {
 		t.Fatalf("got %d pages, first starting %.20q", len(got), got[0])
 	}
 
-	if !strings.HasSuffix(got[0], "**\n") {
+	if !strings.HasSuffix(got[0], "~~\n") {
 		t.Errorf("closing markers were cut off: ends %q", got[0][len(got[0])-10:])
 	}
 

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/handler"
@@ -32,12 +33,15 @@ func (h *handlers) bugList(data discord.SlashCommandInteractionData, e *handler.
 
 	pages := formatBugList(items, data.Bool("incomplete"))
 
-	if err := editResponse(e, pages[0]); err != nil {
+	first, err := e.UpdateInteractionResponse(discord.NewMessageUpdate().WithContent(pages[0]))
+	if err != nil {
 		return fmt.Errorf("sending bug list: %w", err)
 	}
 
 	for _, page := range pages[1:] {
-		followUp(e, page)
+		if _, err := e.Client().Rest.CreateMessage(first.ChannelID, discord.NewMessageCreate().WithContent(page)); err != nil {
+			slog.Error("failed to send bug list page", "err", err)
+		}
 	}
 
 	return nil
@@ -53,7 +57,7 @@ func formatBugList(items []bugtracker.Item, incompleteOnly bool) []string {
 			continue
 		}
 
-		format := "- **%s**\n"
+		format := "- %s\n"
 		if item.Complete {
 			format = "- ~~%s~~\n"
 		}
